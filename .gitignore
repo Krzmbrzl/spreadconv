@@ -274,3 +274,8 @@ TSWLatexianTemp*
 
 # Makeindex log files
 *.lpz
+
+# Temp files of our package
+shell_esc_exit_code
+shell_esc_stderr
+shell_esc_stdout

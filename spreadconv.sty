@@ -1,0 +1,200 @@
+%% Copyright since 2022 spreadconv maintainers (github.com/spreadsheet-converter).
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License version 1.3c,
+% available at http://www.latex-project.org/lppl/.
+%
+% Alternatively, this work is available under the terms
+% of the BSD-3-Clause license available in the LICENSE file
+% at the root of the source tree or at https://opensource.org/licenses/BSD-3-Clause.
+
+\RequirePackage{expl3}
+\RequirePackage{xparse}
+
+\ProvidesExplPackage{spreadconv}{2022-10-19}{1.0}{A package to automatically convert data held in spreadsheets into csv files that can be read in and
+processed from within \LaTeX}
+
+% https://tex.stackexchange.com/a/569709
+\providecommand\IfFormatAtLeastTF{\@ifl@t@r\fmtversion}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%% Define keys %%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\keys_define:nn { spreadconv } {
+	python .str_set:N = \l_spreadconv_keys_python_str,
+	python .initial:n = python3,
+	python .value_required:n = true,
+}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%% Process package/class options %%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\IfFormatAtLeastTF{2022/06/22}{
+	% Since LaTeX release of June 2022, there exists a native \ProcessKeyOptions that
+	% is a more powerful version of the \ProcessKeysOptions from the l3keys2e package.
+	\ProcessKeyOptions{ spreadconv }
+}{
+	\RequirePackage{l3keys2e}
+
+	\ProcessKeysOptions{ spreadconv }
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%% Define messages %%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+{
+	% Don't ignore spaces in here as that makes writing messages much more practical
+	\char_set_catcode_space:n { `\  }
+
+	% Shell-escape related messages
+	\msg_new:nnnn{spreadconv}{shellesc_disabled}{Shell-escaping is disabled, but required for spreadconv to work}
+		{You will have to explicitly allow LaTeX to use this feature (usually via a special command-line flag)}
+	\msg_new:nnn{spreadconv}{shellesc_restricted}{Shell-escape is restricted. spreadconv requires unrestricted shell-escape}
+	\msg_new:nnn{spreadconv}{shellesc_failed}{Shell-escape call failed: #1 (returned #2)\\Stderr: #3}
+
+	% Python related messages
+	\msg_new:nnn{spreadconv}{python_found}{Found Python version: #1}
+	\msg_new:nnn{spreadconv}{python_not_found}{Could not find a working Python version in PATH}
+	\msg_new:nnn{spreadconv}{pyexcel_found}{Found pyexcel module version: #1}
+	\msg_new:nnnn{spreadconv}{pyexcel_not_found}{Could not find an installed pyexcel version}
+		{Please install pyexcel via pip3 install pyexcel}
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%% Initial checks %%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Check if shell-escape is possible
+\sys_if_shell:TF {
+	\sys_if_shell_restricted:TF {
+		\msg_fatal:nn{spreadconv}{shellesc_restricted}
+	}{}
+}{
+	\msg_fatal:nn{spreadconv}{shellesc_disabled}
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%% Package variable definitions %%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \l__spreadconv_shell_esc_stdout_tl
+\tl_new:N \l__spreadconv_shell_esc_stderr_tl
+\int_new:N \l__spreadconv_shell_esc_exit_code_int
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%% Helper function definitions %%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%% Shell access
+
+% Function to execute some shell-escape code and expose all interesting results of the call
+\cs_new:Nn \__spreadconv_shell_esc_execute:n {
+	% TODO: Make Windows compatible
+	\sys_shell_now:n{#1 > shell_esc_stdout ~ 2> shell_esc_stderr; echo ~ $? > shell_esc_exit_code}
+
+	% Keep spaces
+	\char_set_catcode_space:n { `\  }
+	\char_set_catcode_end_line:n { 5 }
+
+	\file_get:nnN {shell_esc_stdout}{}\l__spreadconv_shell_esc_stdout_tl
+	\file_get:nnN {shell_esc_stderr}{}\l__spreadconv_shell_esc_stderr_tl
+	\file_get:nnN {shell_esc_exit_code}{}\l__spreadconv_shell_esc_exit_code_int
+}
+
+\cs_generate_variant:Nn \__spreadconv_shell_esc_execute:n { x, f }
+
+
+% Execute the given shell code, but also check its exit code and produce an error if it is not zero
+\cs_new:Nn \__spreadconv_shell_esc_checked_execute:n {
+	\__spreadconv_shell_esc_execute:n{#1}
+
+	\int_compare:nNnTF {\l__spreadconv_shell_esc_exit_code_int}{=}{0}{}{
+		\msg_error:nnxxx{spreadconv}{shellesc_failed}{#1}{\l__spreadconv_shell_esc_exit_code_int}{\l__spreadconv_shell_esc_stderr_tl}
+	}
+}
+
+\cs_generate_variant:Nn \__spreadconv_shell_esc_checked_execute:n { x, f }
+
+
+%%%%%% Python checks
+
+% Function to perform a check whether Python is installed and accessible
+\cs_new:Nn \__spreadconv_verify_python_accessible: {
+	\__spreadconv_shell_esc_execute:x{\l_spreadconv_keys_python_str \c_space_tl --version}
+
+	\int_compare:nNnTF {\l__spreadconv_shell_esc_exit_code_int}{=}{0}{
+		\msg_info:nnx{spreadconv}{python_found}{\l__spreadconv_shell_esc_stdout_tl}
+	}{
+		\msg_critical:nn{spreadconv}{python_not_found}
+	}
+}
+
+% Function to check whether pyexcel is installed (in current Python path)
+\cs_new:Nn \__spreadconv_verify_pyexcel_available: {
+	\__spreadconv_shell_esc_execute:x{\l_spreadconv_keys_python_str \c_space_tl -c ~ "import ~ pyexcel; print(pyexcel.__version__)"}
+
+	\int_compare:nNnTF {\l__spreadconv_shell_esc_exit_code_int}{=}{0}{
+		\msg_info:nnx{spreadconv}{pyexcel_found}{\l__spreadconv_shell_esc_stdout_tl}
+	}{
+		\msg_critical:nn{spreadconv}{pyexcel_not_found}
+	}
+}
+
+
+%%%%%% Miscellaneous
+
+% Function to declare a dependency on an external file. With this, latexmk (and perhaps other tools)
+% can now that they'll have to recompile if that external file is changed.
+% Note that this works explicitly also for files that are themselves not actually included or read
+% by TeX itself.
+\cs_new:Nn \__spreadconv_add_file_dependency:n {
+	\typeout{External ~ file ~ dependency ~ on:}
+	% See https://tex.stackexchange.com/a/245556
+	\typeout{(#1)}
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% Implementations of actual functionality %%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Define function to export the data from the given spreadsheet
+% Arg 1: Spreadsheet path
+% Arg 2: Output directory path
+% Arg 3: Output format
+\cs_new:Nn \spreadconv_convert_spreadsheet:nnn {
+	\__spreadconv_shell_esc_checked_execute:x{
+		\l_spreadconv_keys_python_str \c_space_tl spreadsheet_converter.py ~
+		-i ~ '#1' ~ -o ~ '#2' ~ --print-exported-files ~ --output-format ~ '#3'
+	}
+
+	\__spreadconv_add_file_dependency:n{ #1 }
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%% Expose functions via document commands %%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand{\ConvertSpreadsheet}{ O{csv} m m }{
+	\spreadconv_convert_spreadsheet:nnn{#2}{#3}{#1}
+}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%% Closing checks %%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\__spreadconv_verify_python_accessible:
+
+\__spreadconv_verify_pyexcel_available:
