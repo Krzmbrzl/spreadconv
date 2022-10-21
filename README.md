@@ -1,2 +1,3 @@
-# spreadsheet-converter
-A Python utility used to automatically convert data contained in spreadsheets into other formats.
+# spreadconv
+
+A LaTeX package to automatically interface with spreadsheets with the help of a Python utility.
