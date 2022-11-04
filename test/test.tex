@@ -1,11 +1,12 @@
 \documentclass{scrartcl}
 
 \usepackage{spreadconv}
+\usepackage{csvsimple-l3}
 
 \ConvertSpreadsheet[csv]{test.ods}{dataDir}
 
 \begin{document}
 
-	Just a test
+	\csvautotabular*[separator=semicolon]{dataDir/SampleData.csv}
 
 \end{document}

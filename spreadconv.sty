@@ -174,7 +174,7 @@ processed from within \LaTeX}
 \cs_new:Nn \spreadconv_convert_spreadsheet:nnn {
 	\__spreadconv_shell_esc_checked_execute:x{
 		\l_spreadconv_keys_python_str \c_space_tl spreadsheet_converter.py ~
-		-i ~ '#1' ~ -o ~ '#2' ~ --print-exported-files ~ --output-format ~ '#3'
+		-i ~ '#1' ~ -o ~ '#2' ~ --print-exported-files ~ --latex ~ --output-format ~ '#3'
 	}
 
 	\__spreadconv_add_file_dependency:n{ #1 }
