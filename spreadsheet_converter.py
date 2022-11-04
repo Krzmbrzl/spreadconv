@@ -14,14 +14,14 @@ import os
 import sys
 
 
-def report_error(msg: str):
+def report_error(msg: str) -> None:
     """Print the given error message to stderr (with the default prefix).
     Newlines are automatically indented to make individual messages more visible."""
     print("[ERROR]: ", msg.replace("\n", "\n  "), file=sys.stderr)
 
 
-def filter_empty(book):
-    def filter_empty_row_or_col(index, row_or_col):
+def filter_empty(book) -> None:
+    def filter_empty_row_or_col(index, row_or_col) -> bool:
         del index  # unused
         for entry in row_or_col:
             if type(entry) != str or entry.strip() != "":
@@ -46,7 +46,7 @@ def export(book, output_dir: str, output_format: str) -> List[str]:
     else:
         os.makedirs(output_dir)
 
-    exported_files = []
+    exported_files: List[str] = []
 
     for current_sheet_name in book.sheet_names():
         current_sheet = book[current_sheet_name]
@@ -61,7 +61,7 @@ def export(book, output_dir: str, output_format: str) -> List[str]:
     return exported_files
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Converter used to convert between different spreadsheet formats")
 
