@@ -1,0 +1,19 @@
+name: Compile sample proposal
+
+on: [push, pull_request]
+
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: xu-cheng/latex-action@v2
+        with:
+          root_file: test.tex
+          working_directory: test
+          latexmk_shell_escape: true
+          extra_system_packages: "python3"
+          pre_compile: "python3 -m ensurepip && pip3 install pyexcel pyexcel-ods3"
